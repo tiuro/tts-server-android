@@ -1,28 +1,17 @@
 name: Build Test
 
 on:
-  push:
-    branches:
-      - "master"
-      - "compose"
-    paths-ignore:
-      - "**.md"
   workflow_dispatch:
 
 jobs:
   build:
     strategy:
       matrix:
-        product: [ { name: "App原版", value: app, lzyId: "9493563" }, { name: "Dev共存版", value: dev, lzyId: "7381570" } ]
-
+        product: [ { name: "App", value: app } ]
       fail-fast: false
     runs-on: ubuntu-latest
     env:
       product: ${{ matrix.product.value }}
-      product_name: ${{ matrix.product.value }}
-      lzy_folder_id: ${{ matrix.product.lzyId }}
-      ylogin: ${{ secrets.LANZOU_ID }}
-      phpdisk_info: ${{ secrets.LANZOU_PSD }}
       outputs_dir: "${{ github.workspace }}/app/build/outputs"
       ver_name: ""
 
@@ -41,13 +30,15 @@ jobs:
 
       - name: Init Signature
         run: |
+          keytool -genkeypair -v -keystore $GITHUB_WORKSPACE/app/key.jks \
+            -alias ttsserver -keyalg RSA -keysize 2048 -validity 3650 \
+            -storepass ttsserver123 -keypass ttsserver123 \
+            -dname "CN=TTS Server CI, OU=CI, O=CI, L=CI, S=CI, C=PL"
           touch local.properties
-          echo ALIAS_NAME='${{ secrets.ALIAS_NAME }}' >> local.properties
-          echo ALIAS_PASSWORD='${{ secrets.ALIAS_PASSWORD }}' >> local.properties
-          echo KEY_PASSWORD='${{ secrets.KEY_PASSWORD }}' >> local.properties
+          echo ALIAS_NAME='ttsserver' >> local.properties
+          echo ALIAS_PASSWORD='ttsserver123' >> local.properties
+          echo KEY_PASSWORD='ttsserver123' >> local.properties
           echo KEY_PATH='./key.jks' >> local.properties
-          # 从Secrets读取无换行符Base64解码, 然后保存到到app/key.jks
-          echo ${{ secrets.KEY_STORE }} | base64 --decode > $GITHUB_WORKSPACE/app/key.jks
 
       - name: Build with Gradle
         run: |
@@ -57,31 +48,9 @@ jobs:
       - name: Set Version Name
         run: |
           echo "ver_name=$(grep -m 1 'versionName' ${{ env.outputs_dir }}/apk/${{ env.product }}/release/output-metadata.json | cut -d\" -f4)" >> $GITHUB_ENV
-          
-          #      - name: Set APK Path
-          #        run: |
-          #          echo "apk_path=${{ env.outputs_dir }}/apk/${{ env.product }}/release/${{ env.product }}-release.apk" >> $GITHUB_ENV    
-          
-          #            - name: Upload Mappings to Artifact
-          #              uses: actions/upload-artifact@v4
-          #              with:
-          #                name: mappings_${{ env.product }}_${{ env.ver_name }}
-          #                path: ${{ env.outputs_dir }}/mapping/*/*.txt
 
       - name: Upload APK To Artifact
         uses: actions/upload-artifact@v4
         with:
           name: "TTS-Server_${{ env.product }}_${{ env.ver_name }}"
           path: ${{env.outputs_dir}}/apk/${{ env.product }}/release/*${{ env.ver_name }}.apk
-
-
-      - name: Upload APK To Lanzouyun
-        run: |
-          mkdir apk
-          cp ${{ env.outputs_dir }}/apk/${{ env.product }}/release/*${{ env.ver_name }}.apk "${{ github.workspace }}/apk"
-          path="${{ github.workspace }}/apk"
-          python3 ${{ github.workspace }}/.github/scripts/lzy_web.py $path "${{ env.lzy_folder_id }}"
-          
-#          echo "app: https://jing332.lanzn.com/b09jpjd2d"
-#          echo "dev: https://jing332.lanzn.com/b09ig9qla"
-#          echo "密码PWD: 1234"
